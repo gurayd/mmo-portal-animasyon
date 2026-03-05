@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MMO Periyodik Kontrol Süreci</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600&display=swap');
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:'Barlow',sans-serif}
+.title-bar{color:#FFD600;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;letter-spacing:3px;text-transform:uppercase;margin-bottom:12px;opacity:.7}
+.stage{width:720px;height:405px;border-radius:6px;overflow:hidden;position:relative;box-shadow:0 0 60px rgba(255,214,0,.15),0 20px 60px rgba(0,0,0,.6)}
+.scene{position:absolute;inset:0;opacity:0;pointer-events:none;transition:opacity .6s ease}
+.scene.active{opacity:1;pointer-events:all}
+.scene-badge{position:absolute;top:14px;left:14px;background:#FFD600;color:#1a1a2e;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;letter-spacing:2px;padding:3px 8px;border-radius:3px;z-index:10}
+.caption{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.65);color:white;font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:600;letter-spacing:1px;padding:5px 18px;border-radius:4px;white-space:nowrap;backdrop-filter:blur(4px);z-index:10}
+.progress-bar{position:absolute;top:0;left:0;height:3px;background:#FFD600;transition:width .5s ease;border-radius:0 2px 2px 0;z-index:20}
+
+/* ── GEÇIŞ SAHNE (s1 & s9) ── */
+.trans-scene{background:linear-gradient(135deg,#0a1628 0%,#1a2e50 60%,#0d1f3c 100%)}
+.ts-wrap{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px}
+.ts-tag{background:#FF6F00;color:white;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;letter-spacing:4px;padding:4px 16px;border-radius:2px;animation:fadeUp .5s ease .2s backwards}
+.ts-line{width:120px;height:3px;background:linear-gradient(90deg,transparent,#FFD600,transparent);animation:fadeUp .5s ease .5s backwards}
+.ts-main{color:#FFD600;font-family:'Barlow Condensed',sans-serif;font-size:38px;font-weight:800;letter-spacing:4px;text-align:center;line-height:1.1;animation:fadeUp .5s ease .4s backwards;text-shadow:0 0 40px rgba(255,214,0,.3)}
+.ts-sub{color:rgba(255,255,255,.6);font-family:'Barlow Condensed',sans-serif;font-size:15px;letter-spacing:3px;font-weight:600;animation:fadeUp .5s ease .6s backwards}
+.ts-icons{display:flex;gap:24px;margin-top:8px;animation:fadeUp .5s ease .8s backwards}
+.ts-icon{width:48px;height:48px;border:2px solid rgba(255,214,0,.3);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:22px}
+.ts-corner{position:absolute;width:60px;height:60px;opacity:.4}
+@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── WAREHOUSE (s2,s3,s4) ── */
+#s2,#s3,#s4{background:#E8EDF2}
+.wh-wall{position:absolute;top:0;left:0;right:0;height:295px;background:#D5DCE6}
+.wh-wall::after{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 59px,#C8CDD6 59px,#C8CDD6 60px),repeating-linear-gradient(90deg,transparent,transparent 79px,#C8CDD6 79px,#C8CDD6 80px)}
+.wh-floor{position:absolute;bottom:0;left:0;right:0;height:110px;background:#CBD3DC}
+.wh-stripe{position:absolute;bottom:80px;left:0;right:0;height:6px;background:repeating-linear-gradient(90deg,#FFD600 0 40px,transparent 40px 80px);opacity:.7}
+.shelf{position:absolute;background:#B0B8C4;border-radius:2px}
+.shelf-top{top:60px;right:30px;width:140px;height:14px}
+.shelf-mid{top:120px;right:30px;width:140px;height:14px}
+.shelf-bot{top:180px;right:30px;width:140px;height:14px}
+.shelf-post-r{top:55px;right:30px;width:8px;height:150px;background:#9BA5B0;border-radius:2px;position:absolute}
+.shelf-post-l{top:55px;right:162px;width:8px;height:150px;background:#9BA5B0;border-radius:2px;position:absolute}
+.box{position:absolute;border-radius:2px}
+.b1{width:28px;height:22px;background:#E07B3F;top:38px;right:50px}
+.b2{width:22px;height:18px;background:#5B9BD5;top:42px;right:82px}
+.b3{width:30px;height:20px;background:#E07B3F;top:98px;right:48px}
+.b4{width:24px;height:19px;background:#4CAF50;top:101px;right:82px}
+
+/* ── FORKLIFT (small) ── */
+.forklift{position:absolute;bottom:95px;left:220px;width:160px;height:120px}
+.fl-body{position:absolute;bottom:0;left:30px;width:110px;height:72px;background:#FFD600;border-radius:4px 12px 0 0}
+.fl-cab{position:absolute;bottom:72px;left:60px;width:60px;height:40px;background:#FFB300;border-radius:6px 6px 0 0}
+.fl-window{position:absolute;top:6px;left:8px;width:44px;height:26px;background:#B3DEFF;border-radius:3px;opacity:.85}
+.fl-mast{position:absolute;bottom:0;left:8px;width:10px;height:100px;background:#9E9E9E;border-radius:2px}
+.fl-mast2{position:absolute;bottom:0;left:22px;width:10px;height:100px;background:#9E9E9E;border-radius:2px}
+.fl-fork1{position:absolute;bottom:26px;left:0;width:36px;height:7px;background:#757575;border-radius:0 0 2px 0}
+.fl-fork2{position:absolute;bottom:14px;left:0;width:36px;height:7px;background:#757575;border-radius:0 0 2px 0}
+.fl-wheel{position:absolute;width:24px;height:24px;background:#333;border-radius:50%;border:4px solid #555}
+.fl-wheel::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:8px;height:8px;background:#888;border-radius:50%}
+.fl-wh-l{bottom:-2px;left:36px}
+.fl-wh-r{bottom:-2px;right:16px}
+.fl-qr{position:absolute;top:8px;right:12px;width:36px;height:36px;background:white;border:2px solid #444;border-radius:2px;overflow:hidden}
+.fl-qr canvas{width:100%;height:100%;image-rendering:pixelated;display:block}
+.fl-label{position:absolute;top:-18px;left:50%;transform:translateX(-50%);background:#FF6F00;color:white;font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;padding:2px 6px;border-radius:2px;letter-spacing:1px;white-space:nowrap}
+
+/* ── ENGINEER ── */
+.engineer{position:absolute;bottom:95px;transition:left 1.2s cubic-bezier(.4,0,.2,1)}
+#eng1{left:500px}
+#eng1.walk{left:410px}
+.eng-body-g{position:relative;width:54px;height:110px}
+.eng-head{position:absolute;top:22px;left:15px;width:24px;height:24px;background:#F5CBA7;border-radius:50%}
+.eng-helmet{position:absolute;top:14px;left:12px;width:30px;height:16px;background:#FFD600;border-radius:50% 50% 0 0}
+.eng-helmet::after{content:'';position:absolute;bottom:-3px;left:-3px;right:-3px;height:5px;background:#FFB300;border-radius:2px}
+.eng-vest{position:absolute;top:46px;left:8px;width:38px;height:32px;background:#4CAF50;border-radius:3px 3px 0 0}
+.eng-vest::before{content:'';position:absolute;top:4px;left:4px;right:4px;height:6px;background:repeating-linear-gradient(90deg,#FFD600 0 4px,transparent 4px 8px);opacity:.8}
+.eng-vest::after{content:'';position:absolute;bottom:4px;left:4px;right:4px;height:6px;background:repeating-linear-gradient(90deg,#FFD600 0 4px,transparent 4px 8px);opacity:.8}
+.eng-pants{position:absolute;top:78px;left:10px;width:34px;height:28px;background:#37474F;border-radius:0 0 3px 3px}
+.eng-leg-l{position:absolute;top:100px;left:10px;width:14px;height:10px;background:#37474F}
+.eng-leg-r{position:absolute;top:100px;left:28px;width:14px;height:10px;background:#37474F}
+.eng-shoe-l{position:absolute;top:109px;left:8px;width:16px;height:6px;background:#333;border-radius:0 3px 3px 3px}
+.eng-shoe-r{position:absolute;top:109px;left:26px;width:16px;height:6px;background:#333;border-radius:0 3px 3px 3px}
+.eng-arm{position:absolute;top:52px;right:-10px;width:18px;height:22px;background:#F5CBA7;border-radius:4px;transform-origin:top center}
+.eng-tablet{position:absolute;top:48px;right:-24px;width:22px;height:28px;background:#1565C0;border-radius:3px;border:2px solid #0D47A1}
+.eng-tablet::after{content:'';position:absolute;top:3px;left:3px;right:3px;height:14px;background:#E3F2FD;border-radius:1px}
+@keyframes walkL{0%,100%{transform:rotate(10deg)}50%{transform:rotate(-10deg)}}
+@keyframes walkR{0%,100%{transform:rotate(-10deg)}50%{transform:rotate(10deg)}}
+.walking .eng-leg-l{transform-origin:top center;animation:walkL .4s ease infinite}
+.walking .eng-leg-r{transform-origin:top center;animation:walkR .4s ease infinite}
+
+/* ── SCAN BEAM & TABLET (s3) ── */
+.scan-beam{position:absolute;width:4px;background:linear-gradient(180deg,rgba(255,80,0,0),#FF4500 50%,rgba(255,80,0,0));border-radius:2px;opacity:0;animation:scanBeam .8s ease-in-out infinite}
+@keyframes scanBeam{0%,100%{opacity:0;transform:translateY(-30px)}50%{opacity:1;transform:translateY(30px)}}
+.big-tablet{position:absolute;right:60px;top:60px;width:160px;height:210px;background:#0D47A1;border-radius:10px;border:4px solid #0a3880;box-shadow:0 8px 30px rgba(0,0,0,.3);animation:tabletPop .5s ease backwards}
+@keyframes tabletPop{from{transform:scale(.5);opacity:0}to{transform:scale(1);opacity:1}}
+.bt-screen{position:absolute;inset:8px;background:#E3F2FD;border-radius:6px;overflow:hidden}
+.bt-header{background:#1565C0;padding:6px 8px;color:white;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:1px}
+.bt-qr-area{margin:5px 8px;width:44px;height:44px;background:white;border:1px solid #90CAF9;border-radius:2px;overflow:hidden}
+.bt-qr-area canvas{width:100%;height:100%;image-rendering:pixelated;display:block}
+.bt-row{display:flex;align-items:center;gap:5px;padding:4px 8px;border-bottom:1px solid #BBDEFB;font-size:8px;color:#1A237E;font-weight:600}
+.bt-dot{width:6px;height:6px;border-radius:50%;background:#4CAF50;flex-shrink:0}
+
+/* ── CHECKLIST (s4) ── */
+.checklist-tablet{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:220px;height:270px;background:#0D47A1;border-radius:12px;border:5px solid #0a3880;box-shadow:0 12px 40px rgba(0,0,0,.35);animation:scaleIn .5s ease backwards}
+@keyframes scaleIn{from{transform:translate(-50%,-50%) scale(.6);opacity:0}to{transform:translate(-50%,-50%) scale(1);opacity:1}}
+.ct-screen{position:absolute;inset:8px;background:#F5F9FF;border-radius:7px;overflow:hidden}
+.ct-header{background:#1565C0;padding:7px 10px;color:white;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px}
+.ct-item{display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid #E3EFFF;font-size:9px;color:#1A237E;font-weight:600}
+.ct-check{width:14px;height:14px;border:2px solid #4CAF50;border-radius:3px;background:#4CAF50;display:flex;align-items:center;justify-content:center;color:white;font-size:9px;flex-shrink:0;transform:scale(0);transition:transform .3s cubic-bezier(.4,2,.6,1)}
+.ct-check.show{transform:scale(1)}
+.ct-result{position:absolute;bottom:10px;left:0;right:0;text-align:center;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:800;color:#1B5E20;background:#C8E6C9;margin:0 8px;padding:5px;border-radius:4px;border:2px solid #4CAF50;opacity:0;transition:opacity .5s ease}
+.ct-result.show{opacity:1}
+
+/* ── CLOUD UPLOAD (s5) ── */
+#s5{background:#0D2137}
+.cloud-tablet{position:absolute;left:80px;top:50%;transform:translateY(-50%);width:100px;height:130px;background:#1565C0;border-radius:8px;border:3px solid #0D47A1}
+.cst-screen{position:absolute;inset:5px;background:#E3F2FD;border-radius:4px}
+.cst-screen::after{content:'ONAYLANDI';display:block;text-align:center;padding-top:20px;font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:800;color:#1B5E20;letter-spacing:1px}
+.data-packet{position:absolute;width:12px;height:12px;background:#FFD600;border-radius:3px;left:190px;animation:flyToCloud 1.4s ease-in-out infinite}
+.data-packet:nth-child(2){animation-delay:.4s;background:#4CAF50}
+.data-packet:nth-child(3){animation-delay:.8s;background:#42A5F5}
+@keyframes flyToCloud{0%{left:190px;top:200px;opacity:0;transform:scale(.5)}20%{opacity:1;transform:scale(1)}70%{opacity:1}100%{left:490px;top:155px;opacity:0;transform:scale(.3)}}
+.wifi-ring{position:absolute;border:2px solid rgba(255,214,0,.5);border-radius:50%;animation:wifiPulse 1.5s ease-out infinite}
+@keyframes wifiPulse{0%{transform:scale(.3);opacity:1}100%{transform:scale(2);opacity:0}}
+
+/* ── OFFICE (s6) ── */
+#s6{background:#EFF3F7}
+.off-wall{position:absolute;top:0;left:0;right:0;bottom:110px;background:#E0E8F0}
+.off-wall::after{content:'';position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent,transparent 79px,#D0D8E0 79px,#D0D8E0 80px)}
+.off-floor{position:absolute;bottom:0;left:0;right:0;height:110px;background:#C8D2DC}
+.off-window{position:absolute;top:25px;right:55px;width:105px;height:95px;background:linear-gradient(135deg,#B8D8F0,#D8EEFF 50%,#A8CFF0);border:5px solid #8AAABB;border-radius:3px}
+.off-window::before{content:'';position:absolute;top:0;bottom:0;left:50%;width:3px;background:rgba(138,170,187,.7);transform:translateX(-50%)}
+.off-window::after{content:'';position:absolute;left:0;right:0;top:50%;height:3px;background:rgba(138,170,187,.7);transform:translateY(-50%)}
+.off-sign{position:absolute;top:22px;left:40px;background:#1565C0;color:white;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;letter-spacing:2px;padding:5px 12px;border-radius:3px;border-left:4px solid #FFD600}
+.chair-back{position:absolute;bottom:156px;left:158px;width:64px;height:76px;background:#1565C0;border-radius:6px 6px 0 0;border:3px solid #0D47A1}
+.chair-back::after{content:'';position:absolute;inset:6px;background:rgba(255,255,255,.08);border-radius:3px}
+.chair-seat{position:absolute;bottom:152px;left:150px;width:80px;height:14px;background:#1565C0;border-radius:4px;border:3px solid #0D47A1}
+.chair-leg-l{position:absolute;bottom:120px;left:158px;width:10px;height:34px;background:#455A64;border-radius:0 0 3px 3px;transform:rotate(-4deg)}
+.chair-leg-r{position:absolute;bottom:120px;left:212px;width:10px;height:34px;background:#455A64;border-radius:0 0 3px 3px;transform:rotate(4deg)}
+.chair-whl{position:absolute;bottom:112px;left:154px;width:18px;height:8px;background:#37474F;border-radius:4px}
+.chair-whr{position:absolute;bottom:112px;left:208px;width:18px;height:8px;background:#37474F;border-radius:4px}
+.chair-arm-l{position:absolute;bottom:180px;left:150px;width:8px;height:30px;background:#0D47A1;border-radius:4px 4px 0 0}
+.chair-arm-r{position:absolute;bottom:180px;left:222px;width:8px;height:30px;background:#0D47A1;border-radius:4px 4px 0 0}
+.sp-wrap{position:absolute;bottom:166px;left:163px}
+.sp-hair{position:absolute;top:0;left:13px;width:28px;height:16px;background:#5D4037;border-radius:50% 50% 0 0}
+.sp-head{position:absolute;top:10px;left:14px;width:24px;height:24px;background:#F5CBA7;border-radius:50%}
+.sp-torso{position:absolute;top:34px;left:6px;width:40px;height:34px;background:#37474F;border-radius:4px 4px 2px 2px}
+.sp-torso::before{content:'';position:absolute;top:5px;left:5px;right:5px;height:5px;background:rgba(255,255,255,.12);border-radius:2px}
+.sp-arm-fwd{position:absolute;top:44px;left:40px;width:30px;height:10px;background:#F5CBA7;border-radius:5px;transform:rotate(-10deg);transform-origin:left center}
+.desk{position:absolute;bottom:95px;left:60px;width:460px;height:22px;background:#8D6E63;border-radius:4px}
+.desk::after{content:'';position:absolute;top:22px;left:16px;width:28px;height:70px;background:#795548;border-radius:0 0 4px 4px;box-shadow:388px 0 0 #795548}
+.monitor{position:absolute;bottom:117px;left:225px;width:215px;height:138px;background:#263238;border-radius:6px;border:4px solid #37474F}
+.mon-screen{position:absolute;inset:4px;background:#E8F5E9;border-radius:3px;overflow:hidden}
+.mon-stand{position:absolute;bottom:-16px;left:50%;transform:translateX(-50%);width:40px;height:14px;background:#37474F;border-radius:0 0 4px 4px}
+.mon-base{position:absolute;bottom:-22px;left:50%;transform:translateX(-50%);width:70px;height:6px;background:#455A64;border-radius:3px}
+.keyboard{position:absolute;bottom:102px;left:240px;width:135px;height:16px;background:#CFD8DC;border-radius:3px}
+.keyboard::after{content:'';position:absolute;inset:3px 4px;background:repeating-linear-gradient(90deg,#B0BEC5 0 8px,transparent 8px 12px);opacity:.7}
+.mouse{position:absolute;bottom:103px;left:382px;width:13px;height:19px;background:#B0BEC5;border-radius:40% 40% 30% 30%}
+.mouse::after{content:'';position:absolute;top:5px;left:5px;width:2px;height:7px;background:#90A4AE;border-radius:1px}
+.desk-mug{position:absolute;bottom:118px;left:80px;width:14px;height:15px;background:#5D4037;border-radius:1px 1px 3px 3px}
+.desk-mug::after{content:'';position:absolute;top:-3px;left:1px;right:1px;height:5px;background:#6D4C41;border-radius:50%}
+.office-label{position:absolute;top:14px;left:50%;transform:translateX(-50%);background:rgba(21,101,192,.92);color:white;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:800;letter-spacing:2px;padding:4px 14px;border-radius:3px;white-space:nowrap;border-left:4px solid #FFD600}
+
+/* ── DASHBOARD (s7) ── */
+#s7{background:linear-gradient(160deg,#1a2535,#0e1925)}
+.dash-monitor{position:absolute;top:40px;left:50%;transform:translateX(-50%);width:500px;height:300px;background:#263238;border-radius:8px;border:5px solid #37474F;box-shadow:0 10px 40px rgba(0,0,0,.3)}
+.dash-screen{position:absolute;inset:5px;background:#1A237E;border-radius:4px;overflow:hidden}
+.dash-topbar{background:#0D47A1;padding:8px 16px;display:flex;align-items:center;gap:10px;color:white;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;letter-spacing:1px}
+.dash-card{margin:12px 16px;background:rgba(255,255,255,.08);border-radius:6px;padding:10px 14px;border:1px solid rgba(255,255,255,.1)}
+.dash-card-title{color:#90CAF9;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;margin-bottom:6px}
+.dash-card-val{color:white;font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:800;letter-spacing:1px}
+.dash-approved{display:inline-block;background:#4CAF50;color:white;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:800;letter-spacing:3px;padding:3px 12px;border-radius:3px;animation:approvedPulse 1.2s ease-in-out infinite}
+@keyframes approvedPulse{0%,100%{box-shadow:0 0 0 0 rgba(76,175,80,.5)}50%{box-shadow:0 0 0 8px rgba(76,175,80,0)}}
+.dash-bars{display:flex;gap:4px;align-items:flex-end;height:40px;margin-top:8px}
+.dash-bar{flex:1;background:#42A5F5;border-radius:2px 2px 0 0;animation:barGrow 1s ease backwards}
+@keyframes barGrow{from{height:0}}
+.dash-bar:nth-child(1){height:60%;animation-delay:.1s}.dash-bar:nth-child(2){height:80%;animation-delay:.2s}
+.dash-bar:nth-child(3){height:55%;animation-delay:.3s}.dash-bar:nth-child(4){height:90%;animation-delay:.4s;background:#4CAF50}
+.dash-bar:nth-child(5){height:70%;animation-delay:.5s}
+
+/* ── REPORT (s8) ── */
+#s8{background:#EFF3F7}
+.report-monitor{position:absolute;top:30px;left:50%;transform:translateX(-50%);width:520px;height:320px;background:#263238;border-radius:8px;border:5px solid #37474F;box-shadow:0 10px 40px rgba(0,0,0,.3)}
+.rpt-screen{position:absolute;inset:5px;background:white;border-radius:4px;overflow:hidden}
+.rpt-header{background:#1565C0;padding:10px 16px;color:white;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:800;letter-spacing:2px}
+.rpt-body{padding:10px 16px}
+.rpt-field{display:flex;gap:10px;align-items:center;padding:5px 0;border-bottom:1px solid #E8EDF5;font-size:9px;color:#333;animation:fadeSlide .4s ease backwards}
+@keyframes fadeSlide{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}
+.rpt-field:nth-child(1){animation-delay:.1s}.rpt-field:nth-child(2){animation-delay:.2s}
+.rpt-field:nth-child(3){animation-delay:.3s}.rpt-field:nth-child(4){animation-delay:.4s}
+.rpt-field:nth-child(5){animation-delay:.5s}.rpt-field:nth-child(6){animation-delay:.6s}
+.rpt-field:nth-child(7){animation-delay:.7s}
+.rpt-label{font-weight:700;color:#555;min-width:130px;font-family:'Barlow',sans-serif}
+.rpt-val{color:#1A237E;font-weight:600;font-family:'Barlow',sans-serif}
+.rpt-val.green{color:#1B5E20;font-weight:800}
+.rpt-stamp{position:absolute;right:20px;bottom:20px;width:72px;height:72px;border:4px solid #4CAF50;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#4CAF50;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:800;letter-spacing:1px;text-align:center;transform:rotate(-20deg);animation:stampIn .4s cubic-bezier(.4,2,.6,1) .8s backwards}
+@keyframes stampIn{from{transform:rotate(-20deg) scale(0);opacity:0}to{transform:rotate(-20deg) scale(1);opacity:1}}
+
+/* ── FIELD SCENES (s10,s11,s12) ── */
+#s10,#s11,#s12{background:#E4EAF0}
+.field-wall{position:absolute;top:0;left:0;right:0;bottom:120px;background:#D8E0EA}
+.field-wall::after{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 39px,#CDD5DE 39px,#CDD5DE 40px),repeating-linear-gradient(90deg,transparent,transparent 59px,#CDD5DE 59px,#CDD5DE 60px)}
+.field-floor{position:absolute;bottom:0;left:0;right:0;height:120px;background:#B8C4CE}
+.field-stripe{position:absolute;bottom:88px;left:0;right:0;height:8px;background:repeating-linear-gradient(90deg,#FFD600 0 50px,transparent 50px 100px);opacity:.6}
+.safety-sign{position:absolute;top:30px;left:28px;width:70px;height:55px;background:#FFD600;border:3px solid #FF6F00;border-radius:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.safety-sign-icon{font-size:20px;line-height:1}
+.safety-sign-txt{font-family:'Barlow Condensed',sans-serif;font-size:7px;font-weight:800;color:#333;letter-spacing:1px;text-align:center;line-height:1.2}
+
+/* ── BIG FORKLIFT ── */
+.forklift-big{position:absolute;bottom:95px;left:60px;width:240px;height:180px;transform-origin:bottom left}
+.flb-body{position:absolute;bottom:0;left:45px;width:165px;height:108px;background:#FFD600;border-radius:4px 18px 0 0}
+.flb-cab{position:absolute;bottom:108px;left:90px;width:90px;height:60px;background:#FFB300;border-radius:8px 8px 0 0}
+.flb-window{position:absolute;top:8px;left:10px;width:68px;height:38px;background:#B3DEFF;border-radius:4px;opacity:.85}
+.flb-mast{position:absolute;bottom:0;left:12px;width:14px;height:152px;background:#9E9E9E;border-radius:2px}
+.flb-mast2{position:absolute;bottom:0;left:32px;width:14px;height:152px;background:#9E9E9E;border-radius:2px}
+.flb-fork1{position:absolute;bottom:38px;left:0;width:54px;height:10px;background:#757575;border-radius:0 0 3px 0}
+.flb-fork2{position:absolute;bottom:22px;left:0;width:54px;height:10px;background:#757575;border-radius:0 0 3px 0}
+.flb-wh-l{position:absolute;bottom:-4px;left:52px;width:36px;height:36px;background:#333;border-radius:50%;border:5px solid #555}
+.flb-wh-r{position:absolute;bottom:-4px;right:22px;width:36px;height:36px;background:#333;border-radius:50%;border:5px solid #555}
+.flb-wh-l::after,.flb-wh-r::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:12px;height:12px;background:#888;border-radius:50%}
+.flb-qr{position:absolute;top:12px;right:18px;width:48px;height:48px;background:white;border:3px solid #444;border-radius:3px;overflow:hidden}
+.flb-qr canvas{width:100%;height:100%;image-rendering:pixelated;display:block}
+.flb-label{position:absolute;top:-22px;left:50%;transform:translateX(-50%);background:#FF6F00;color:white;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;padding:2px 8px;border-radius:2px;letter-spacing:1px;white-space:nowrap}
+
+/* ── ISG PERSONS ── */
+.isg-person{position:relative;width:46px;height:100px;flex-shrink:0}
+.isg-head{position:absolute;top:10px;left:11px;width:22px;height:22px;background:#F5CBA7;border-radius:50%}
+.isg-vest{position:absolute;top:32px;left:4px;width:36px;height:30px;border-radius:3px 3px 0 0}
+.isg-vest::before{content:'';position:absolute;top:4px;left:3px;right:3px;height:5px;background:repeating-linear-gradient(90deg,rgba(255,255,255,.7) 0 3px,transparent 3px 6px)}
+.isg-vest::after{content:'';position:absolute;bottom:4px;left:3px;right:3px;height:5px;background:repeating-linear-gradient(90deg,rgba(255,255,255,.7) 0 3px,transparent 3px 6px)}
+.isg-pants{position:absolute;top:62px;left:6px;width:32px;height:26px;background:#37474F;border-radius:0 0 2px 2px}
+.isg-leg-l{position:absolute;top:82px;left:6px;width:12px;height:10px;background:#37474F}
+.isg-leg-r{position:absolute;top:82px;left:24px;width:12px;height:10px;background:#37474F}
+.isg-shoe-l{position:absolute;top:91px;left:4px;width:14px;height:5px;background:#222;border-radius:0 3px 3px 3px}
+.isg-shoe-r{position:absolute;top:91px;left:24px;width:14px;height:5px;background:#222;border-radius:0 3px 3px 3px}
+.isg-arm-clip{position:absolute;top:38px;right:-4px;width:16px;height:20px;background:#F5CBA7;border-radius:3px}
+.isg-clipboard{position:absolute;top:32px;right:-18px;width:20px;height:26px;background:#FFF9C4;border:2px solid #F9A825;border-radius:2px}
+.isg-clipboard::before{content:'';position:absolute;top:3px;left:2px;right:2px;height:2px;background:#F9A825;border-radius:1px;box-shadow:0 4px 0 #F9A825,0 8px 0 #ccc,0 12px 0 #ccc,0 16px 0 #ccc}
+.isg-arm-phone{position:absolute;top:36px;right:-6px;width:16px;height:20px;background:#F5CBA7;border-radius:3px;transform:rotate(-20deg);transform-origin:top center}
+.isg-phone-hold{position:absolute;top:24px;right:-20px;width:18px;height:30px;background:#1a1a2e;border-radius:4px;border:2px solid #333}
+.isg-phone-hold::after{content:'';position:absolute;inset:3px;background:#E3F2FD;border-radius:2px}
+#isgGroup{position:absolute;bottom:95px;display:flex;gap:6px;align-items:flex-end}
+.phone-scan-beam{position:absolute;width:3px;height:40px;background:linear-gradient(180deg,rgba(255,80,0,0),#FF4500 50%,rgba(255,80,0,0));border-radius:2px;opacity:0;animation:scanBeam .7s ease-in-out infinite;animation-play-state:paused}
+
+/* ── PHONE REPORT POPUP (s11) ── */
+#phoneReport{position:absolute;right:30px;top:20px;width:185px;height:340px;background:#1a1a2e;border-radius:16px;border:3px solid #333;box-shadow:0 16px 50px rgba(0,0,0,.55);opacity:0;transform:scale(.7) translateY(20px);transition:opacity .5s ease,transform .5s cubic-bezier(.4,2,.4,1);pointer-events:none}
+#phoneReport.show{opacity:1;transform:scale(1) translateY(0)}
+.ph-notch{position:absolute;top:0;left:50%;transform:translateX(-50%);width:50px;height:10px;background:#1a1a2e;border-radius:0 0 8px 8px;z-index:2}
+.ph-screen{position:absolute;inset:4px;background:#F5F9FF;border-radius:13px;overflow:hidden}
+.ph-statusbar{background:#1565C0;height:22px;display:flex;align-items:center;justify-content:space-between;padding:0 10px}
+.ph-statusbar-txt{color:white;font-size:7px;font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px}
+.ph-header{background:#1565C0;padding:6px 10px;color:white;font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:800;letter-spacing:1px;border-top:1px solid rgba(255,255,255,.15)}
+.ph-logo-row{display:flex;align-items:center;gap:6px;padding:8px 10px 4px;border-bottom:1px solid #E3EFFF}
+.ph-logo-badge{background:#1565C0;color:white;font-family:'Barlow Condensed',sans-serif;font-size:8px;font-weight:800;padding:2px 5px;border-radius:2px;letter-spacing:1px}
+.ph-logo-name{color:#1A237E;font-family:'Barlow Condensed',sans-serif;font-size:8px;font-weight:700}
+.ph-row{display:flex;justify-content:space-between;align-items:center;padding:5px 10px;border-bottom:1px solid #EEF3FA;animation:fadeSlide .3s ease backwards}
+.ph-row:nth-child(1){animation-delay:.1s}.ph-row:nth-child(2){animation-delay:.2s}.ph-row:nth-child(3){animation-delay:.3s}
+.ph-row:nth-child(4){animation-delay:.4s}.ph-row:nth-child(5){animation-delay:.5s}.ph-row:nth-child(6){animation-delay:.6s}.ph-row:nth-child(7){animation-delay:.7s}
+.ph-lbl{color:#555;font-size:7px;font-weight:700;font-family:'Barlow',sans-serif}
+.ph-val{color:#1A237E;font-size:7.5px;font-weight:700;font-family:'Barlow Condensed',sans-serif}
+.ph-val.ok{color:#1B5E20}
+.ph-stamp-row{padding:8px 10px;display:flex;justify-content:center}
+.ph-stamp{background:#4CAF50;color:white;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;letter-spacing:2px;padding:5px 16px;border-radius:20px;animation:approvedPulse 1.2s ease-in-out infinite}
+
+/* ── SPEECH BUBBLE (s12) ── */
+.speech-bubble{position:absolute;background:white;border:2px solid #1565C0;border-radius:8px 8px 8px 0;padding:6px 10px;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;color:#1A237E;letter-spacing:.5px;white-space:nowrap;animation:bubblePop .4s cubic-bezier(.4,2,.6,1) backwards}
+.speech-bubble::after{content:'';position:absolute;bottom:-10px;left:8px;width:0;height:0;border-left:8px solid transparent;border-right:4px solid transparent;border-top:10px solid #1565C0}
+@keyframes bubblePop{from{transform:scale(0);opacity:0}to{transform:scale(1);opacity:1}}
+
+/* ── CONTROLS ── */
+.controls{display:flex;gap:10px;align-items:center;margin-top:16px}
+.btn{background:#FFD600;color:#1a1a2e;border:none;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:800;letter-spacing:2px;padding:8px 20px;border-radius:4px;transition:background .2s,transform .1s}
+.btn:hover{background:#FFE033;transform:translateY(-1px)}
+.btn:active{transform:translateY(0)}
+.btn.secondary{background:transparent;color:#FFD600;border:2px solid #FFD600}
+.btn.secondary:hover{background:rgba(255,214,0,.1)}
+.scene-indicator{color:rgba(255,255,255,.4);font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:600;letter-spacing:2px}
+.dot-row{display:flex;gap:6px;align-items:center}
+.dot{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.2);cursor:pointer;transition:background .3s}
+.dot.active{background:#FFD600}
+</style>
+</head>
+<body>
+
+<div class="title-bar">⚙ MMO Periyodik Kontrol Süreci</div>
+<div class="stage" id="stage">
+  <div class="progress-bar" id="progress"></div>
+
+  <!-- ═══ S1 – SENARYO 1 GEÇİŞ ═══ -->
+  <div class="scene active trans-scene" id="s1">
+    <svg class="ts-corner" style="top:0;left:0" viewBox="0 0 60 60"><polyline points="0,40 0,0 40,0" fill="none" stroke="#FFD600" stroke-width="3"/></svg>
+    <svg class="ts-corner" style="top:0;right:0" viewBox="0 0 60 60"><polyline points="20,0 60,0 60,40" fill="none" stroke="#FFD600" stroke-width="3"/></svg>
+    <svg class="ts-corner" style="bottom:0;left:0" viewBox="0 0 60 60"><polyline points="0,20 0,60 40,60" fill="none" stroke="#FFD600" stroke-width="3"/></svg>
+    <svg class="ts-corner" style="bottom:0;right:0" viewBox="0 0 60 60"><polyline points="60,20 60,60 20,60" fill="none" stroke="#FFD600" stroke-width="3"/></svg>
+    <svg style="position:absolute;inset:0;width:100%;height:100%;opacity:.06" viewBox="0 0 720 405"><defs><pattern id="g1" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0L0 0 0 40" fill="none" stroke="#FFD600" stroke-width="1"/></pattern></defs><rect width="720" height="405" fill="url(#g1)"/></svg>
+    <div class="ts-wrap">
+      <div class="ts-tag">SENARYO 1</div>
+      <div class="ts-line"></div>
+      <div class="ts-main">PERİYODİK KONTROL<br><span style="font-size:26px;color:rgba(255,255,255,.7)">& Raporlama Süreci</span></div>
+      <div class="ts-sub">SAHA DENETİMİ · DİJİTAL RAPOR · BULUT PORTALI</div>
+      <div class="ts-icons">
+        <div class="ts-icon">🔍</div>
+        <div class="ts-icon">📋</div>
+        <div class="ts-icon">☁️</div>
+      </div>
+    </div>
+    <div class="scene-badge">SAHNE 1</div>
+  </div>
+
+  <!-- ═══ S2 – Depo, Mühendis Yaklaşıyor ═══ -->
+  <div class="scene" id="s2">
+    <div class="wh-wall"></div>
+    <div class="shelf shelf-top"></div><div class="shelf shelf-mid"></div><div class="shelf shelf-bot"></div>
+    <div class="shelf-post-r"></div><div class="shelf-post-l"></div>
+    <div class="box b1"></div><div class="box b2"></div><div class="box b3"></div><div class="box b4"></div>
+    <div class="wh-floor"></div><div class="wh-stripe"></div>
+    <div class="forklift">
+      <div class="fl-label">FORKLİFT #FL-047</div>
+      <div class="fl-mast"></div><div class="fl-mast2"></div>
+      <div class="fl-fork1"></div><div class="fl-fork2"></div>
+      <div class="fl-body"><div class="fl-qr"><canvas id="qrA" width="32" height="32"></canvas></div></div>
+      <div class="fl-cab"><div class="fl-window"></div></div>
+      <div class="fl-wheel fl-wh-l"></div><div class="fl-wheel fl-wh-r"></div>
+    </div>
+    <div class="engineer" id="eng1">
+      <div class="eng-body-g">
+        <div class="eng-helmet"></div><div class="eng-head"></div>
+        <div class="eng-vest"></div><div class="eng-arm"></div><div class="eng-tablet"></div>
+        <div class="eng-pants"></div><div class="eng-leg-l"></div><div class="eng-leg-r"></div>
+        <div class="eng-shoe-l"></div><div class="eng-shoe-r"></div>
+      </div>
+    </div>
+    <div class="scene-badge">SAHNE 2</div>
+    <div class="caption">Kontrol Mühendisi Forklift #FL-047'ye yaklaşıyor</div>
+  </div>
+
+  <!-- ═══ S3 – QR Tarama ═══ -->
+  <div class="scene" id="s3">
+    <div class="wh-wall"></div><div class="wh-floor"></div><div class="wh-stripe"></div>
+    <div style="position:absolute;bottom:95px;left:130px;">
+      <div class="forklift" style="transform:scale(1.2);transform-origin:bottom left;">
+        <div class="fl-label">FORKLİFT #FL-047</div>
+        <div class="fl-mast"></div><div class="fl-mast2"></div>
+        <div class="fl-fork1"></div><div class="fl-fork2"></div>
+        <div class="fl-body"><div class="fl-qr"><canvas id="qrB" width="32" height="32"></canvas></div></div>
+        <div class="fl-cab"><div class="fl-window"></div></div>
+        <div class="fl-wheel fl-wh-l"></div><div class="fl-wheel fl-wh-r"></div>
+      </div>
+    </div>
+    <div style="position:absolute;bottom:95px;left:350px;">
+      <div class="eng-body-g">
+        <div class="eng-helmet"></div><div class="eng-head"></div><div class="eng-vest"></div>
+        <div class="eng-arm" style="transform:rotate(-30deg)"></div>
+        <div class="eng-tablet" style="top:42px;right:-28px;transform:rotate(-20deg)"></div>
+        <div class="eng-pants"></div><div class="eng-leg-l"></div><div class="eng-leg-r"></div>
+        <div class="eng-shoe-l"></div><div class="eng-shoe-r"></div>
+      </div>
+    </div>
+    <div class="scan-beam" style="height:50px;top:215px;left:315px;"></div>
+    <div class="big-tablet">
+      <div class="bt-screen">
+        <div class="bt-header">📋 EKİPMAN BİLGİSİ</div>
+        <div class="bt-qr-area"><canvas id="qrC" width="44" height="44"></canvas></div>
+        <div class="bt-row"><div class="bt-dot"></div>ID: FL-047</div>
+        <div class="bt-row"><div class="bt-dot"></div>Tür: Forklift</div>
+        <div class="bt-row"><div class="bt-dot"></div>Son Kontrol: 01.02.2026</div>
+        <div class="bt-row"><div class="bt-dot"></div>Durum: KONTROL GEREKLİ</div>
+      </div>
+    </div>
+    <div class="scene-badge">SAHNE 3</div>
+    <div class="caption">Kontrol Mühendisi QR kodu taradı — ekipman verileri yüklendi</div>
+  </div>
+
+  <!-- ═══ S4 – Kontrol Listesi ═══ -->
+  <div class="scene" id="s4">
+    <div class="wh-wall" style="background:#DDE4EC;"></div>
+    <div class="wh-floor"></div><div class="wh-stripe"></div>
+    <div class="checklist-tablet">
+      <div class="ct-screen">
+        <div class="ct-header">✅ PERİYODİK KONTROL LİSTESİ — FL-047</div>
+        <div class="ct-item"><div class="ct-check" id="chk1">✓</div><span>Frenler</span></div>
+        <div class="ct-item"><div class="ct-check" id="chk2">✓</div><span>Yükselticiler</span></div>
+        <div class="ct-item"><div class="ct-check" id="chk3">✓</div><span>Hidrolik Sistem</span></div>
+        <div class="ct-item"><div class="ct-check" id="chk4">✓</div><span>Uyarı Sistemleri</span></div>
+        <div class="ct-result" id="ctResult">✅ Tüm Kriterler Onaylandı</div>
+      </div>
+    </div>
+    <div class="scene-badge">SAHNE 4</div>
+    <div class="caption">Dijital kontrol listesi tamamlandı — tüm kriterler onaylandı</div>
+  </div>
+
+  <!-- ═══ S5 – Bulut Yükleme ═══ -->
+  <div class="scene" id="s5">
+    <div class="cloud-tablet"><div class="cst-screen"></div></div>
+    <div style="position:absolute;left:55px;top:208px;color:#90CAF9;font-family:'Barlow Condensed',sans-serif;font-size:10px;letter-spacing:1px;">TABLET</div>
+    <svg style="position:absolute;right:100px;top:50%;transform:translateY(-50%)" width="140" height="95" viewBox="0 0 140 95" fill="none">
+      <ellipse cx="70" cy="65" rx="58" ry="28" fill="#1565C0" opacity="0.7"/>
+      <circle cx="42" cy="54" r="24" fill="#1565C0" opacity="0.8"/>
+      <circle cx="80" cy="44" r="30" fill="#1565C0" opacity="0.9"/>
+      <circle cx="58" cy="40" r="22" fill="#1976D2"/>
+      <text x="70" y="70" text-anchor="middle" fill="white" font-family="Barlow Condensed" font-size="10" font-weight="700" letter-spacing="1">BULUT SUNUCU</text>
+    </svg>
+    <div class="wifi-ring" style="width:20px;height:20px;right:178px;top:150px;animation-delay:0s;"></div>
+    <div class="wifi-ring" style="width:30px;height:30px;right:173px;top:145px;animation-delay:.3s;"></div>
+    <div class="wifi-ring" style="width:40px;height:40px;right:168px;top:140px;animation-delay:.6s;"></div>
+    <div class="data-packet" style="top:200px;"></div>
+    <div class="data-packet" style="top:200px;"></div>
+    <div class="data-packet" style="top:200px;"></div>
+    <svg style="position:absolute;top:0;left:0;" width="720" height="405">
+      <line x1="195" y1="202" x2="490" y2="168" stroke="#FFD600" stroke-width="2" stroke-dasharray="8 6" opacity="0.35"/>
+    </svg>
+    <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:white;font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:800;letter-spacing:3px;text-align:center;text-shadow:0 0 20px rgba(255,214,0,.4);">
+      RAPOR YÜKLENİYOR<br>
+      <span style="font-size:12px;color:#FFD600;letter-spacing:4px;font-weight:600;">MMO BULUT SUNUCUSUNA...</span>
+    </div>
+    <div class="scene-badge">SAHNE 5</div>
+    <div class="caption">Periyodik kontrol raporu bulut sunucusuna güvenli şekilde yüklendi</div>
+  </div>
+
+  <!-- ═══ S6 – Firma Yetkilisi Ofisi ═══ -->
+  <div class="scene" id="s6">
+    <div class="off-wall"></div><div class="off-floor"></div>
+    <div class="off-window"></div>
+    <div class="off-sign">MMO RAPOR PORTALI</div>
+    <div class="chair-arm-l"></div><div class="chair-arm-r"></div>
+    <div class="chair-back"></div><div class="chair-seat"></div>
+    <div class="chair-leg-l"></div><div class="chair-leg-r"></div>
+    <div class="chair-whl"></div><div class="chair-whr"></div>
+    <div class="sp-wrap">
+      <div class="sp-hair"></div><div class="sp-head"></div>
+      <div class="sp-torso"></div><div class="sp-arm-fwd"></div>
+    </div>
+    <div class="desk"></div><div class="desk-mug"></div>
+    <div class="monitor">
+      <div class="mon-screen">
+        <div style="background:#0D47A1;padding:5px 8px;color:white;font-family:'Barlow Condensed',sans-serif;font-size:8px;font-weight:700;letter-spacing:1px;">MMO RAPOR PORTALI</div>
+        <div style="padding:6px 8px;color:#1A237E;font-size:7.5px;font-weight:600;">
+          <div style="background:#C8E6C9;padding:3px 5px;border-radius:2px;margin-bottom:3px;color:#1B5E20;font-weight:700;font-size:7px;">🔔 Yeni Rapor Alındı: FL-047</div>
+          <div style="color:#555;font-size:6.5px;">Durum: ONAYLANDI ✅</div>
+          <div style="color:#888;font-size:6px;margin-top:2px;">05.03.2026 — Kontrol Müh. #07</div>
+        </div>
+      </div>
+      <div class="mon-stand"></div><div class="mon-base"></div>
+    </div>
+    <div class="keyboard"></div><div class="mouse"></div>
+    <div class="office-label">FİRMA YETKİLİSİ OFİSİ</div>
+    <div class="scene-badge">SAHNE 6</div>
+    <div class="caption">Firma yetkilisi MMO Rapor Portalı üzerinden bildirimi aldı</div>
+  </div>
+
+  <!-- ═══ S7 – Dashboard ═══ -->
+  <div class="scene" id="s7">
+    <div class="dash-monitor">
+      <div class="dash-screen">
+        <div class="dash-topbar"><span style="font-size:16px;">📊</span> FORKLİFT PERİYODİK KONTROL RAPORU — FL-047</div>
+        <div style="display:flex;gap:12px;padding:0 8px;">
+          <div class="dash-card" style="flex:1;"><div class="dash-card-title">DURUM</div><div class="dash-approved">ONAYLANDI</div></div>
+          <div class="dash-card" style="flex:1;"><div class="dash-card-title">TARİH</div><div class="dash-card-val" style="font-size:14px;">05.03.2026</div></div>
+          <div class="dash-card" style="flex:1;"><div class="dash-card-title">KONTROL MÜHENDİSİ</div><div class="dash-card-val" style="font-size:13px;">MÜH-07</div></div>
+        </div>
+        <div class="dash-card" style="margin:0 16px;">
+          <div class="dash-card-title">KONTROL GEÇMİŞİ — SON 5</div>
+          <div class="dash-bars">
+            <div class="dash-bar"></div><div class="dash-bar"></div><div class="dash-bar"></div>
+            <div class="dash-bar"></div><div class="dash-bar"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="scene-badge">SAHNE 7</div>
+    <div class="caption">Panel, Forklift Periyodik Kontrol Raporunu gösteriyor — ONAYLANDI</div>
+  </div>
+
+  <!-- ═══ S8 – Rapor Detay ═══ -->
+  <div class="scene" id="s8">
+    <div class="report-monitor">
+      <div class="rpt-screen">
+        <div class="rpt-header">📋 FORKLİFT PERİYODİK KONTROL RAPORU — FL-047</div>
+        <div class="rpt-body">
+          <div class="rpt-field"><span class="rpt-label">Ekipman ID:</span><span class="rpt-val">FL-047</span></div>
+          <div class="rpt-field"><span class="rpt-label">Kontrol Tarihi:</span><span class="rpt-val">05.03.2026</span></div>
+          <div class="rpt-field"><span class="rpt-label">Kontrol Mühendisi:</span><span class="rpt-val">Müh. #07</span></div>
+          <div class="rpt-field"><span class="rpt-label">Frenler:</span><span class="rpt-val green">✅ ONAYLANDI</span></div>
+          <div class="rpt-field"><span class="rpt-label">Yükselticiler:</span><span class="rpt-val green">✅ ONAYLANDI</span></div>
+          <div class="rpt-field"><span class="rpt-label">Hidrolik Sistem:</span><span class="rpt-val green">✅ ONAYLANDI</span></div>
+          <div class="rpt-field"><span class="rpt-label">Uyarı Sistemleri:</span><span class="rpt-val green">✅ ONAYLANDI</span></div>
+        </div>
+        <div class="rpt-stamp">ONAYLANDI</div>
+      </div>
+    </div>
+    <div class="scene-badge">SAHNE 8</div>
+    <div class="caption">Firma yetkilisi periyodik kontrol raporunu inceledi — tüm kriterler onaylandı</div>
+  </div>
+
+  <!-- ═══ S9 – SENARYO 2 GEÇİŞ ═══ -->
+  <div class="scene trans-scene" id="s9">
+    <svg class="ts-corner" style="top:0;left:0" viewBox="0 0 60 60"><polyline points="0,40 0,0 40,0" fill="none" stroke="#FFD600" stroke-width="3"/></svg>
+    <svg class="ts-corner" style="top:0;right:0" viewBox="0 0 60 60"><polyline points="20,0 60,0 60,40" fill="none" stroke="#FFD600" stroke-width="3"/></svg>
+    <svg class="ts-corner" style="bottom:0;left:0" viewBox="0 0 60 60"><polyline points="0,20 0,60 40,60" fill="none" stroke="#FFD600" stroke-width="3"/></svg>
+    <svg class="ts-corner" style="bottom:0;right:0" viewBox="0 0 60 60"><polyline points="60,20 60,60 20,60" fill="none" stroke="#FFD600" stroke-width="3"/></svg>
+    <svg style="position:absolute;inset:0;width:100%;height:100%;opacity:.06" viewBox="0 0 720 405"><defs><pattern id="g2" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0L0 0 0 40" fill="none" stroke="#FFD600" stroke-width="1"/></pattern></defs><rect width="720" height="405" fill="url(#g2)"/></svg>
+    <div class="ts-wrap">
+      <div class="ts-tag">SENARYO 2</div>
+      <div class="ts-line"></div>
+      <div class="ts-main">SAHA TEFTİŞİ<br><span style="font-size:26px;color:rgba(255,255,255,.7)">İSG Uzmanı Denetimi</span></div>
+      <div class="ts-sub">QR OKUMA · ANLIK RAPOR GÖRÜNTÜLEME</div>
+      <div class="ts-icons">
+        <div class="ts-icon">🏭</div>
+        <div class="ts-icon">📱</div>
+        <div class="ts-icon">✅</div>
+      </div>
+    </div>
+    <div class="scene-badge">SAHNE 9</div>
+  </div>
+
+  <!-- ═══ S10 – ISG Grubu Yaklaşıyor ═══ -->
+  <div class="scene" id="s10">
+    <div class="field-wall"></div><div class="field-floor"></div><div class="field-stripe"></div>
+    <div class="safety-sign"><div class="safety-sign-icon">⚠️</div><div class="safety-sign-txt">İŞ GÜVENLİĞİ<br>ZORUNLUDUR</div></div>
+    <div class="forklift-big">
+      <div class="flb-label">FORKLİFT #FL-047</div>
+      <div class="flb-mast"></div><div class="flb-mast2"></div>
+      <div class="flb-fork1"></div><div class="flb-fork2"></div>
+      <div class="flb-body"><div class="flb-qr"><canvas id="qrD" width="44" height="44"></canvas></div></div>
+      <div class="flb-cab"><div class="flb-window"></div></div>
+      <div class="flb-wh-l"></div><div class="flb-wh-r"></div>
+    </div>
+    <div id="isgGroup" style="left:590px;">
+      <!-- Lider: turuncu kask, kırmızı yelek, pano -->
+      <div class="isg-person">
+        <div style="position:absolute;top:0;left:8px;width:28px;height:14px;background:#FF6F00;border-radius:50% 50% 0 0;"></div>
+        <div style="position:absolute;top:11px;left:8px;width:30px;height:5px;background:#E65100;border-radius:2px;"></div>
+        <div class="isg-head"></div>
+        <div class="isg-vest" style="background:#E53935;"></div>
+        <div class="isg-arm-clip"></div><div class="isg-clipboard"></div>
+        <div class="isg-pants"></div><div class="isg-leg-l"></div><div class="isg-leg-r"></div>
+        <div class="isg-shoe-l"></div><div class="isg-shoe-r"></div>
+      </div>
+      <!-- Uzman: sarı kask, mavi yelek, telefon -->
+      <div class="isg-person">
+        <div style="position:absolute;top:0;left:8px;width:28px;height:14px;background:#FFD600;border-radius:50% 50% 0 0;"></div>
+        <div style="position:absolute;top:11px;left:8px;width:30px;height:5px;background:#FFB300;border-radius:2px;"></div>
+        <div class="isg-head"></div>
+        <div class="isg-vest" style="background:#1565C0;"></div>
+        <div class="isg-arm-phone"></div><div class="isg-phone-hold"></div>
+        <div class="isg-pants"></div><div class="isg-leg-l"></div><div class="isg-leg-r"></div>
+        <div class="isg-shoe-l"></div><div class="isg-shoe-r"></div>
+      </div>
+      <!-- 3. kişi: yeşil kask, kırmızı yelek, pano -->
+      <div class="isg-person">
+        <div style="position:absolute;top:0;left:8px;width:28px;height:14px;background:#4CAF50;border-radius:50% 50% 0 0;"></div>
+        <div style="position:absolute;top:11px;left:8px;width:30px;height:5px;background:#388E3C;border-radius:2px;"></div>
+        <div class="isg-head" style="background:#FDDCB5;"></div>
+        <div class="isg-vest" style="background:#E53935;"></div>
+        <div class="isg-arm-clip"></div><div class="isg-clipboard"></div>
+        <div class="isg-pants"></div><div class="isg-leg-l"></div><div class="isg-leg-r"></div>
+        <div class="isg-shoe-l"></div><div class="isg-shoe-r"></div>
+      </div>
+    </div>
+    <div class="scene-badge">SAHNE 10</div>
+    <div class="caption">İSG Uzmanları saha teftişinde Forklift #FL-047'ye yaklaşıyor</div>
+  </div>
+
+  <!-- ═══ S11 – QR Tarama & Telefonda Rapor ═══ -->
+  <div class="scene" id="s11">
+    <div class="field-wall"></div><div class="field-floor"></div><div class="field-stripe"></div>
+    <div class="safety-sign"><div class="safety-sign-icon">⚠️</div><div class="safety-sign-txt">İŞ GÜVENLİĞİ<br>ZORUNLUDUR</div></div>
+    <div class="forklift-big">
+      <div class="flb-label">FORKLİFT #FL-047</div>
+      <div class="flb-mast"></div><div class="flb-mast2"></div>
+      <div class="flb-fork1"></div><div class="flb-fork2"></div>
+      <div class="flb-body"><div class="flb-qr"><canvas id="qrE" width="44" height="44"></canvas></div></div>
+      <div class="flb-cab"><div class="flb-window"></div></div>
+      <div class="flb-wh-l"></div><div class="flb-wh-r"></div>
+    </div>
+    <div style="position:absolute;bottom:95px;left:308px;display:flex;gap:5px;">
+      <div class="isg-person" style="transform:scale(.88);transform-origin:bottom left;">
+        <div style="position:absolute;top:0;left:8px;width:28px;height:14px;background:#FF6F00;border-radius:50% 50% 0 0;"></div>
+        <div style="position:absolute;top:11px;left:8px;width:30px;height:5px;background:#E65100;border-radius:2px;"></div>
+        <div class="isg-head"></div>
+        <div class="isg-vest" style="background:#E53935;"></div>
+        <div class="isg-arm-clip"></div><div class="isg-clipboard"></div>
+        <div class="isg-pants"></div><div class="isg-leg-l"></div><div class="isg-leg-r"></div>
+        <div class="isg-shoe-l"></div><div class="isg-shoe-r"></div>
+      </div>
+      <!-- QR tarayan kişi -->
+      <div class="isg-person" style="transform:scale(.92);transform-origin:bottom left;">
+        <div style="position:absolute;top:0;left:8px;width:28px;height:14px;background:#FFD600;border-radius:50% 50% 0 0;"></div>
+        <div style="position:absolute;top:11px;left:8px;width:30px;height:5px;background:#FFB300;border-radius:2px;"></div>
+        <div class="isg-head"></div>
+        <div class="isg-vest" style="background:#1565C0;"></div>
+        <div style="position:absolute;top:28px;right:-10px;width:16px;height:22px;background:#F5CBA7;border-radius:4px;transform:rotate(-55deg);transform-origin:top center;"></div>
+        <div id="phoneAnim" style="position:absolute;top:6px;right:-36px;width:20px;height:32px;background:#111;border-radius:5px;border:2px solid #444;opacity:0;transform:scale(.5) rotate(-10deg);transition:opacity .4s,transform .4s cubic-bezier(.4,2,.4,1)">
+          <div style="position:absolute;inset:2px;background:#B3E5FC;border-radius:3px;"></div>
+        </div>
+        <div class="isg-pants"></div><div class="isg-leg-l"></div><div class="isg-leg-r"></div>
+        <div class="isg-shoe-l"></div><div class="isg-shoe-r"></div>
+      </div>
+      <div class="isg-person" style="transform:scale(.88);transform-origin:bottom left;">
+        <div style="position:absolute;top:0;left:8px;width:28px;height:14px;background:#4CAF50;border-radius:50% 50% 0 0;"></div>
+        <div style="position:absolute;top:11px;left:8px;width:30px;height:5px;background:#388E3C;border-radius:2px;"></div>
+        <div class="isg-head" style="background:#FDDCB5;"></div>
+        <div class="isg-vest" style="background:#E53935;"></div>
+        <div class="isg-pants"></div><div class="isg-leg-l"></div><div class="isg-leg-r"></div>
+        <div class="isg-shoe-l"></div><div class="isg-shoe-r"></div>
+      </div>
+    </div>
+    <div class="phone-scan-beam" id="phoneScanBeam" style="top:170px;left:326px;transform:rotate(35deg);transform-origin:top center;"></div>
+    <div id="phoneReport">
+      <div class="ph-notch"></div>
+      <div class="ph-screen">
+        <div class="ph-statusbar"><span class="ph-statusbar-txt">MMO PORTAL</span><span class="ph-statusbar-txt">●●●● 📶</span></div>
+        <div class="ph-header">📋 PERİYODİK KONTROL RAPORU</div>
+        <div class="ph-logo-row"><div class="ph-logo-badge">MMO</div><div class="ph-logo-name">Makine Mühendisleri Odası</div></div>
+        <div class="ph-row"><span class="ph-lbl">Ekipman:</span><span class="ph-val">FL-047</span></div>
+        <div class="ph-row"><span class="ph-lbl">Kontrol Tarihi:</span><span class="ph-val">05.03.2026</span></div>
+        <div class="ph-row"><span class="ph-lbl">Kontrol Müh.:</span><span class="ph-val">Müh. #07</span></div>
+        <div class="ph-row"><span class="ph-lbl">Frenler:</span><span class="ph-val ok">✅ ONAYLANDI</span></div>
+        <div class="ph-row"><span class="ph-lbl">Yükselticiler:</span><span class="ph-val ok">✅ ONAYLANDI</span></div>
+        <div class="ph-row"><span class="ph-lbl">Hidrolik:</span><span class="ph-val ok">✅ ONAYLANDI</span></div>
+        <div class="ph-row"><span class="ph-lbl">Uyarı Sist.:</span><span class="ph-val ok">✅ ONAYLANDI</span></div>
+        <div class="ph-stamp-row"><div class="ph-stamp">ONAYLANDI ✔</div></div>
+      </div>
+    </div>
+    <div class="scene-badge">SAHNE 11</div>
+    <div class="caption">İSG Uzmanı QR kodu telefonuyla okuttu — rapor anında görüntülendi</div>
+  </div>
+
+  <!-- ═══ S12 – Grup Birlikte İnceler ═══ -->
+  <div class="scene" id="s12">
+    <div class="field-wall"></div><div class="field-floor"></div><div class="field-stripe"></div>
+    <div class="safety-sign"><div class="safety-sign-icon">⚠️</div><div class="safety-sign-txt">İŞ GÜVENLİĞİ<br>ZORUNLUDUR</div></div>
+    <div style="position:absolute;bottom:95px;left:20px;transform:scale(.65);transform-origin:bottom left;opacity:.85;">
+      <div class="forklift-big">
+        <div class="flb-label">FORKLİFT #FL-047</div>
+        <div class="flb-mast"></div><div class="flb-mast2"></div>
+        <div class="flb-fork1"></div><div class="flb-fork2"></div>
+        <div class="flb-body"><div class="flb-qr"><canvas id="qrF" width="44" height="44"></canvas></div></div>
+        <div class="flb-cab"><div class="flb-window"></div></div>
+        <div class="flb-wh-l"></div><div class="flb-wh-r"></div>
+      </div>
+    </div>
+    <div style="position:absolute;bottom:95px;right:55px;display:flex;gap:10px;align-items:flex-end;">
+      <div class="speech-bubble" style="position:absolute;top:-46px;left:14px;animation-delay:.5s;">Rapor onaylı! ✅</div>
+      <div class="speech-bubble" style="position:absolute;top:-78px;left:80px;animation-delay:.9s;background:#E8F5E9;border-color:#4CAF50;color:#1B5E20;">Makbul, devam!</div>
+      <div class="isg-person">
+        <div style="position:absolute;top:0;left:8px;width:28px;height:14px;background:#FF6F00;border-radius:50% 50% 0 0;"></div>
+        <div class="isg-head"></div>
+        <div class="isg-vest" style="background:#E53935;"></div>
+        <div style="position:absolute;top:38px;right:-14px;width:22px;height:10px;background:#F5CBA7;border-radius:5px;transform:rotate(-20deg);"></div>
+        <div class="isg-pants"></div><div class="isg-leg-l"></div><div class="isg-leg-r"></div>
+        <div class="isg-shoe-l"></div><div class="isg-shoe-r"></div>
+      </div>
+      <div class="isg-person" style="z-index:2;">
+        <div style="position:absolute;top:0;left:8px;width:28px;height:14px;background:#FFD600;border-radius:50% 50% 0 0;"></div>
+        <div class="isg-head"></div>
+        <div class="isg-vest" style="background:#1565C0;"></div>
+        <div style="position:absolute;top:32px;right:-20px;width:22px;height:36px;background:#111;border-radius:5px;border:2px solid #333;">
+          <div style="position:absolute;inset:3px;background:#C8E6C9;border-radius:3px;"></div>
+          <div style="position:absolute;bottom:5px;left:50%;transform:translateX(-50%);font-size:6px;color:#1B5E20;font-weight:900;">✔</div>
+        </div>
+        <div class="isg-pants"></div><div class="isg-leg-l"></div><div class="isg-leg-r"></div>
+        <div class="isg-shoe-l"></div><div class="isg-shoe-r"></div>
+      </div>
+      <div class="isg-person">
+        <div style="position:absolute;top:0;left:8px;width:28px;height:14px;background:#4CAF50;border-radius:50% 50% 0 0;"></div>
+        <div class="isg-head" style="background:#FDDCB5;"></div>
+        <div class="isg-vest" style="background:#E53935;"></div>
+        <div class="isg-arm-clip"></div><div class="isg-clipboard"></div>
+        <div class="isg-pants"></div><div class="isg-leg-l"></div><div class="isg-leg-r"></div>
+        <div class="isg-shoe-l"></div><div class="isg-shoe-r"></div>
+      </div>
+    </div>
+    <div style="position:absolute;bottom:14px;left:0;right:0;display:flex;justify-content:center;">
+      <div style="background:rgba(21,101,192,.92);color:white;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:800;letter-spacing:2px;padding:6px 22px;border-radius:4px;border-left:4px solid #FFD600;backdrop-filter:blur(4px);">
+        MMO Periyodik Kontrol Raporu — Saha Teftişinde Doğrulandı ✅
+      </div>
+    </div>
+    <div class="scene-badge">SAHNE 12</div>
+  </div>
+
+</div><!-- /stage -->
+
+<div class="controls">
+  <button class="btn secondary" onclick="prevScene()">◀ GERİ</button>
+  <div class="dot-row" id="dotRow"></div>
+  <button class="btn" onclick="nextScene()">İLERİ ▶</button>
+</div>
+<div class="scene-indicator" id="sceneLabel" style="margin-top:8px;">SAHNE 1 / 12</div>
+
+<script>
+/* ═══ QR CODE GENERATOR ═══ */
+(function(){
+  const EXP=new Uint8Array(512),LOG=new Uint8Array(256);
+  let v=1;
+  for(let i=0;i<255;i++){EXP[i]=v;LOG[v]=i;v=(v<<1)^(v&128?0x11d:0);}
+  for(let i=255;i<512;i++)EXP[i]=EXP[i-255];
+  function mul(a,b){return a&&b?EXP[LOG[a]+LOG[b]]:0;}
+  function rsECC(data,n){
+    let g=[1];
+    for(let i=0;i<n;i++){const t=new Array(g.length+1).fill(0);for(let j=0;j<g.length;j++){t[j]^=g[j];t[j+1]^=mul(g[j],EXP[i]);}g=t;}
+    const m=[...data,...new Array(n).fill(0)];
+    for(let i=0;i<data.length;i++){const c=m[i];if(!c)continue;for(let j=0;j<g.length;j++)m[i+j]^=mul(g[j],c);}
+    return m.slice(data.length);
+  }
+  function makeMatrix(text){
+    const enc=[];for(let i=0;i<text.length&&i<14;i++)enc.push(text.charCodeAt(i));
+    const bits=[],pb=(v,n)=>{for(let i=n-1;i>=0;i--)bits.push((v>>i)&1);};
+    pb(4,4);pb(enc.length,8);enc.forEach(b=>pb(b,8));
+    for(let i=0;i<4&&bits.length<152;i++)bits.push(0);
+    while(bits.length%8)bits.push(0);
+    const pad=[0xEC,0x11];let pi=0;while(bits.length<152)pb(pad[pi++%2],8);
+    const cw=[];for(let i=0;i<bits.length;i+=8){let b=0;for(let j=0;j<8;j++)b=(b<<1)|(bits[i+j]||0);cw.push(b);}
+    const all=[...cw,...rsECC(cw,7)];
+    const N=21,m=Array.from({length:N},()=>new Int8Array(N).fill(-1)),r=Array.from({length:N},()=>new Uint8Array(N));
+    function finder(rr,cc){
+      for(let dr=-1;dr<=7;dr++)for(let dc=-1;dc<=7;dc++){
+        const row=rr+dr,col=cc+dc;if(row<0||row>=N||col<0||col>=N)continue;
+        const io=dr>=0&&dr<=6&&dc>=0&&dc<=6,ii=dr>=2&&dr<=4&&dc>=2&&dc<=4;
+        m[row][col]=io?((dr===0||dr===6||dc===0||dc===6)||ii?1:0):0;r[row][col]=1;
+      }
+    }
+    finder(0,0);finder(0,14);finder(14,0);
+    for(let i=8;i<=12;i++){m[6][i]=m[i][6]=i%2?0:1;r[6][i]=r[i][6]=1;}
+    m[13][8]=1;r[13][8]=1;
+    const fmt=[1,1,0,0,0,0,1,0,1,0,0,1,1,0,1];
+    const fp0=[[8,0],[8,1],[8,2],[8,3],[8,4],[8,5],[8,7],[8,8],[7,8],[5,8],[4,8],[3,8],[2,8],[1,8],[0,8]];
+    const fp1=[[8,13],[8,14],[8,15],[8,16],[8,17],[8,18],[8,19],[8,20],[13,8],[14,8],[15,8],[16,8],[17,8],[18,8],[20,8]];
+    for(let i=0;i<15;i++){m[fp0[i][0]][fp0[i][1]]=fmt[i];r[fp0[i][0]][fp0[i][1]]=1;m[fp1[i][0]][fp1[i][1]]=fmt[i];r[fp1[i][0]][fp1[i][1]]=1;}
+    const ab=[];all.forEach(c=>{for(let i=7;i>=0;i--)ab.push((c>>i)&1);});
+    let bi=0,up=true;
+    for(let col=N-1;col>=1;col-=2){
+      if(col===6)col=5;
+      for(let i=0;i<N;i++){const row=up?N-1-i:i;for(let dx=0;dx<2;dx++){const c=col-dx;if(!r[row][c]&&bi<ab.length){const mask=(Math.floor(row/2)+Math.floor(c/3))%2===0;m[row][c]=ab[bi++]^(mask?1:0);}}}
+      up=!up;
+    }
+    return m;
+  }
+  function drawQR(id,text){
+    const canvas=document.getElementById(id);if(!canvas)return;
+    try{
+      const mat=makeMatrix(text),N=mat.length,sz=canvas.width,mod=Math.floor(sz/(N+2)),off=Math.floor((sz-mod*N)/2);
+      const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,sz,sz);
+      for(let row=0;row<N;row++)for(let c=0;c<N;c++){ctx.fillStyle=mat[row][c]===1?'#000':'#fff';ctx.fillRect(off+c*mod,off+row*mod,mod,mod);}
+    }catch(e){
+      const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#000';
+      const s=4;for(let y=0;y<canvas.height;y+=s)for(let x=0;x<canvas.width;x+=s)if((Math.floor(x/s)+Math.floor(y/s))%2===0)ctx.fillRect(x,y,s,s);
+    }
+  }
+  window._drawAllQR=function(){['qrA','qrB','qrC','qrD','qrE','qrF'].forEach(id=>drawQR(id,'FL-047 MMO'));};
+})();
+
+/* ═══ SCENE CONTROLLER ═══ */
+const TOTAL=12;
+let current=1,autoTimer=null;
+const dotRow=document.getElementById('dotRow');
+for(let i=1;i<=TOTAL;i++){const d=document.createElement('div');d.className='dot'+(i===1?' active':'');d.onclick=()=>goScene(i);dotRow.appendChild(d);}
+
+function goScene(n){
+  clearTimeout(autoTimer);
+  document.getElementById('s'+current).classList.remove('active');
+  dotRow.children[current-1].classList.remove('active');
+  current=Math.max(1,Math.min(TOTAL,n));
+  document.getElementById('s'+current).classList.add('active');
+  dotRow.children[current-1].classList.add('active');
+  document.getElementById('sceneLabel').textContent='SAHNE '+current+' / '+TOTAL;
+  document.getElementById('progress').style.width=(current/TOTAL*100)+'%';
+  if(current===2)triggerScene2();
+  if(current===4)triggerScene4();
+  if(current===10)triggerScene10();
+  if(current===11)triggerScene11();
+  autoTimer=setTimeout(()=>{if(current<TOTAL)goScene(current+1);},6000);
+}
+function nextScene(){goScene(current+1);}
+function prevScene(){goScene(current-1);}
+
+function triggerScene2(){
+  const e=document.getElementById('eng1');
+  e.classList.remove('walk','walking');void e.offsetWidth;
+  setTimeout(()=>{e.classList.add('walk','walking');setTimeout(()=>e.classList.remove('walking'),1300);},300);
+}
+function triggerScene4(){
+  ['chk1','chk2','chk3','chk4'].forEach((id,i)=>{
+    const el=document.getElementById(id);el.classList.remove('show');
+    setTimeout(()=>el.classList.add('show'),400+i*350);
+  });
+  const r=document.getElementById('ctResult');r.classList.remove('show');
+  setTimeout(()=>r.classList.add('show'),400+4*350+200);
+}
+function triggerScene10(){
+  const g=document.getElementById('isgGroup');if(!g)return;
+  g.style.transition='none';g.style.left='590px';void g.offsetWidth;
+  setTimeout(()=>{g.style.transition='left 1.6s cubic-bezier(.4,0,.2,1)';g.style.left='420px';},200);
+}
+function triggerScene11(){
+  const phone=document.getElementById('phoneAnim');
+  if(phone){phone.style.opacity='0';phone.style.transform='scale(.5) rotate(-10deg)';void phone.offsetWidth;setTimeout(()=>{phone.style.opacity='1';phone.style.transform='scale(1) rotate(-10deg)';},400);}
+  const beam=document.getElementById('phoneScanBeam');if(beam)beam.style.animationPlayState='running';
+  const rep=document.getElementById('phoneReport');
+  if(rep){rep.classList.remove('show');void rep.offsetWidth;setTimeout(()=>rep.classList.add('show'),1600);}
+}
+
+window._drawAllQR();
+goScene(1);
+</script>
+</body>
+</html>
